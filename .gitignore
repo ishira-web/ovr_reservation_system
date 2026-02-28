@@ -1,0 +1,18 @@
+# Compiled output
+build/
+target/
+*.class
+
+# IDE files
+.settings/
+.project
+*.launch
+nbproject/
+nbactions.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
