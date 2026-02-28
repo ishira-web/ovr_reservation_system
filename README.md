@@ -100,32 +100,135 @@ CREATE DATABASE oceanview_db;
 USE oceanview_db;
 ```
 
-### 2. Run the setup scripts in order
+### 2. Create tables
 
-All scripts are located in `src/main/webapp/WEB-INF/sql/`:
+Run the following queries in order:
 
+#### users
+```sql
+CREATE TABLE IF NOT EXISTS users (
+    user_id       INT AUTO_INCREMENT PRIMARY KEY,
+    username      VARCHAR(50)  NOT NULL UNIQUE,
+    password_hash VARCHAR(64)  NOT NULL,
+    full_name     VARCHAR(100) NOT NULL,
+    role          ENUM('STAFF', 'ADMIN') NOT NULL DEFAULT 'STAFF',
+    status        ENUM('ACTIVE', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
-1. users_setup.sql          -- users table + seed accounts
-2. rooms_setup.sql          -- rooms table + sample rooms
-3. reservations_setup.sql   -- reservations table
-4. payment_setup.sql        -- payments table
-5. extra_charges_setup.sql  -- extra charges table
-6. audit_log_setup.sql      -- audit_log table
-7. system_settings_setup.sql -- system_settings table + defaults
+
+#### rooms
+```sql
+CREATE TABLE IF NOT EXISTS rooms (
+    room_id         INT AUTO_INCREMENT PRIMARY KEY,
+    room_number     INT          NOT NULL UNIQUE,
+    room_type       ENUM('STANDARD','DELUXE','SUITE','FAMILY','PENTHOUSE') NOT NULL,
+    price_per_night DECIMAL(10,2) NOT NULL,
+    status          ENUM('AVAILABLE','OCCUPIED','MAINTENANCE','OUT_OF_ORDER') NOT NULL DEFAULT 'AVAILABLE',
+    floor           INT          NOT NULL DEFAULT 1,
+    description     TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-### 3. Database schema overview
+#### reservations
+```sql
+CREATE TABLE IF NOT EXISTS reservations (
+    reservation_id   INT AUTO_INCREMENT PRIMARY KEY,
+    guest_name       VARCHAR(100) NOT NULL,
+    guest_email      VARCHAR(100) NOT NULL,
+    guest_phone      VARCHAR(20),
+    room_number      INT          NOT NULL,
+    room_type        ENUM('STANDARD','DELUXE','SUITE','FAMILY','PENTHOUSE') NOT NULL,
+    check_in_date    DATE         NOT NULL,
+    check_out_date   DATE         NOT NULL,
+    number_of_guests INT          NOT NULL DEFAULT 1,
+    total_amount     DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    status           ENUM('PENDING','CONFIRMED','CHECKED_IN','CHECKED_OUT','CANCELLED','NO_SHOW') NOT NULL DEFAULT 'PENDING',
+    special_requests TEXT,
+    created_by       VARCHAR(50),
+    created_at       DATE         NOT NULL,
+    CONSTRAINT chk_dates  CHECK (check_out_date > check_in_date),
+    CONSTRAINT chk_guests CHECK (number_of_guests >= 1)
+);
+```
 
-| Table | Description |
-|-------|-------------|
-| `users` | System accounts with roles (ADMIN / STAFF) |
-| `reservations` | Guest bookings with status lifecycle |
-| `rooms` | Hotel room inventory |
-| `payments` | Payment transactions per reservation |
-| `extra_charges` | Add-on charges during stay |
-| `banks` | Bank catalog for payment options |
-| `audit_log` | Tracks all system actions |
-| `system_settings` | Key-value store for app configuration |
+#### banks
+```sql
+CREATE TABLE IF NOT EXISTS banks (
+    bank_id    INT AUTO_INCREMENT PRIMARY KEY,
+    name       VARCHAR(100) NOT NULL,
+    is_active  TINYINT(1)   NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### payments
+```sql
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id     INT AUTO_INCREMENT PRIMARY KEY,
+    reservation_id INT           NOT NULL,
+    amount         DECIMAL(10,2) NOT NULL,
+    method         ENUM('CASH','CARD','TRANSFER') NOT NULL,
+    bank_id        INT,
+    bank_name      VARCHAR(100),
+    card_last4     CHAR(4),
+    reference_no   VARCHAR(100),
+    comment        TEXT,
+    created_by     VARCHAR(50),
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reservation_id) REFERENCES reservations(reservation_id),
+    FOREIGN KEY (bank_id)        REFERENCES banks(bank_id) ON DELETE SET NULL
+);
+```
+
+#### extra_charges
+```sql
+CREATE TABLE IF NOT EXISTS extra_charges (
+    charge_id      INT AUTO_INCREMENT PRIMARY KEY,
+    reservation_id INT           NOT NULL,
+    charge_type    VARCHAR(50)   NOT NULL DEFAULT 'Other',
+    description    VARCHAR(255),
+    amount         DECIMAL(10,2) NOT NULL,
+    added_by       VARCHAR(50),
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reservation_id) REFERENCES reservations(reservation_id)
+);
+```
+
+#### audit_log
+```sql
+CREATE TABLE IF NOT EXISTS audit_log (
+    log_id       INT AUTO_INCREMENT PRIMARY KEY,
+    action       VARCHAR(50)  NOT NULL,
+    table_name   VARCHAR(50)  NOT NULL DEFAULT '',
+    record_id    INT          NOT NULL DEFAULT 0,
+    performed_by VARCHAR(50)  NOT NULL DEFAULT '',
+    ip_address   VARCHAR(45)  NOT NULL DEFAULT '',
+    description  TEXT,
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_action       (action),
+    INDEX idx_audit_performed_by (performed_by),
+    INDEX idx_audit_created_at   (created_at)
+);
+```
+
+#### system_settings
+```sql
+CREATE TABLE IF NOT EXISTS system_settings (
+    setting_key   VARCHAR(100) PRIMARY KEY,
+    setting_value VARCHAR(500) NOT NULL,
+    description   VARCHAR(255),
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT IGNORE INTO system_settings VALUES
+    ('currency',      'LKR',                             'Currency code shown in the UI',   NOW()),
+    ('hotel_name',    'OceanView Hotel',                  'Hotel display name',              NOW()),
+    ('hotel_address', '123 Coastal Avenue, Seaside City', 'Hotel address for invoices',      NOW()),
+    ('hotel_phone',   '+94 11 234 5678',                  'Hotel phone number for invoices', NOW()),
+    ('tax_rate',      '0',                                'Tax % applied on invoices/bills', NOW());
+```
 
 ---
 
